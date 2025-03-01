@@ -1,0 +1,25 @@
+---
+name: 'Substrate Runtime Upgrade'
+description: 'Performs a runtime upgrade for Substrate chains'
+inputs:
+  chain:
+    description: 'The name of the chain to upgrade (e.g., asset-hub)'
+    required: true
+  network:
+    description: 'The network to target (e.g., westend)'
+    required: true
+    default: 'westend'
+  node_url:
+    description: 'The URL of the node to connect to'
+    required: true
+  sudo_key:
+    description: 'The sudo key to use for the upgrade (e.g., //Alice)'
+    required: true
+  max_releases_to_check:
+    description: 'Maximum number of releases to check for WASM files'
+    required: false
+    default: '10'
+
+runs:
+  using: 'node20'
+  main: 'dist/index.js'
