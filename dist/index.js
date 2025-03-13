@@ -5,88 +5,125 @@ const { blake2AsHex } = require('@polkadot/util-crypto');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const axios = require('axios');
+const path = require('path');
+
+// Function to download the file if it's a URL
+const downloadFile = async (url, outputPath) => {
+    console.log(`Downloading file from ${url}...`);
+    const response = await axios({
+        url,
+        method: 'GET',
+        responseType: 'arraybuffer',
+    });
+
+    fs.writeFileSync(outputPath, response.data);
+    console.log(`Downloaded to: ${outputPath}`);
+};
 
 async function main() {
   try {
     // 1. Read inputs
     const targetChainUrl = core.getInput('targetChainUrl');
-    const wasmPath = core.getInput('wasmPath');
     const accountSecret = core.getInput('account');
     const relaychainUrl = core.getInput('relaychainUrl');
-
-    console.log("WASM file info:\n", wasmPath);
-
-//    // 2. Print WASM file info (simulate using subwasm)
+    let  wasmPath = core.getInput('wasmPath');
+//
+//    // 2. Print current runtime info (simulate using subwasm)
 //    try {
-//      const wasmInfo = execSync(`subwasm info ${wasmPath}`, { encoding: 'utf-8' });
-//      console.log("WASM file info:\n", wasmInfo);
+//
+//      const chainInfo = execSync(`subwasm info  ${targetChainUrl}`, { encoding: 'utf-8' });
+//      console.log("Current runtime info:\n", chainInfo);
 //    } catch (err) {
-//      console.warn("Warning: Could not retrieve WASM file info via subwasm. Ensure the tool is installed.", err.message);
+//      console.warn("Warning: Could not retrieve chain info via subwasm. Ensure the tool is installed.", err.message);
 //    }
 //
-//    // 3. Print chain info (simulate using subwasm)
+//    // 1. Print New runtime info
 //    try {
-//      const chainForInfo = relaychainUrl ? relaychainUrl : targetChainUrl;
-//      const chainInfo = execSync(`subwasm info --chain ${chainForInfo}`, { encoding: 'utf-8' });
-//      console.log("Chain info:\n", chainInfo);
-//    } catch (err) {
-//      console.warn("Warning: Could not retrieve chain info via subwasm.", err.message);
-//    }
-//
-//    // 4. Load WASM code (from URL or local file)
-//    let wasmCode;
-//    if (wasmPath.startsWith('http')) {
-//      console.log("Fetching WASM file from URL...");
-//      const response = await axios.get(wasmPath, { responseType: 'arraybuffer' });
-//      wasmCode = new Uint8Array(response.data);
-//    } else {
-//      console.log("Reading WASM file from local path...");
-//      wasmCode = fs.readFileSync(wasmPath);
-//    }
-//
-//    // 5. Compute code hash for the runtime upgrade
-//    const codeHash = blake2AsHex(wasmCode);
-//    console.log(`Computed code hash: ${codeHash}`);
-//
-//    // 6. Connect to target chain API (for account queries, etc.)
-//    const provider = new WsProvider(targetChainUrl);
-//    const api = await ApiPromise.create({ provider });
-//
-//    // 7. Load account from secret/mnemonic
-//    const keyring = new Keyring({ type: 'sr25519' });
-//    const account = keyring.addFromUri(accountSecret);
-//    console.log(`Using account: ${account.address}`);
-//
-//    // 8. Check if the account is the sudo key
-//    const sudoKey = (await api.query.sudo.key()).toString();
-//    const isSudo = account.address === sudoKey;
-//    console.log(`Is account sudo: ${isSudo}`);
-//
-//    // 9. If not sudo, check if account is proxy for sudo
-//    let isProxySudo = false;
-//    if (!isSudo) {
-//      const proxies = await api.query.proxy.proxies(account.address);
-//      // proxies returns a tuple: [proxyList, deposit]
-//      if (proxies[0].length > 0) {
-//        for (const [delegate] of proxies[0]) {
-//          if (delegate.toString() === sudoKey) {
-//            isProxySudo = true;
-//            break;
-//          }
+//        if (wasmPath.startsWith('http')) {
+//            const filename = path.basename(new URL(wasmPath).pathname);
+//            wasmPath = path.join(__dirname, filename); // Save in the same directory
+//            await downloadFile(core.getInput('wasmPath'), wasmPath);
 //        }
-//      }
-//      console.log(`Is account proxy for sudo: ${isProxySudo}`);
+//        if (!fs.existsSync(wasmPath)) {
+//            throw new Error(`WASM file not found: ${wasmPath}`);
+//        }
+//        try {
+//            const wasmInfo = execSync(`subwasm info ${wasmPath}`, { encoding: 'utf-8' });
+//            console.log("New runtime info:\n", wasmInfo);
+//        } catch (err) {
+//          console.warn("Warning: Could not retrieve WASM file info via subwasm. Ensure the tool is installed.", err.message);
+//        }
+//    } catch (err) {
+//        console.error("Error:", err.message);
+//        process.exit(1);
 //    }
-//
-//    // 10. If neither sudo nor proxy, then fail.
-//    if (!isSudo && !isProxySudo) {
-//      core.setFailed("Key does not have permission to update the runtime (not sudo or proxy for sudo).");
-//      process.exit(1);
+
+    // 4. Load WASM code (from URL or local file)
+    let wasmCode;
+    console.log("Reading WASM file...");
+    wasmCode = fs.readFileSync(wasmPath);
+
+
+    // 5. Compute code hash for the runtime upgrade
+    const codeHash = blake2AsHex(wasmCode);
+    console.log(`Computed code hash: ${codeHash}`);
+
+    // 6. Connect to target chain API (for account queries, etc.)
+    const provider = new WsProvider(relaychainUrl ? relaychainUrl : targetChainUrl);
+    const api = await ApiPromise.create({ provider });
+
+    // 7. Load account from secret/mnemonic
+    const keyring = new Keyring({ type: 'sr25519' });
+    const account = keyring.addFromUri(accountSecret);
+    console.log(`Using account: ${account.address}`);
+
+    // 8. Check if the account is the sudo key
+    const sudoKey = (await api.query.sudo.key()).toString();
+    const isSudo = account.address === sudoKey;
+    console.log(`Is account sudo: ${isSudo}`);
+
+    // 9. If not sudo, check if account is proxy for sudo
+    let isProxySudo = false;
+    if (!isSudo) {
+      const proxies = await api.query.proxy.proxies(sudoKey);
+      // proxies returns a tuple: [proxyList, deposit]
+      if (proxies[0].length > 0) {
+        for (const proxy of proxies[0]) {
+          if (proxy.delegate.toString() === account.address ) {
+            isProxySudo = true;
+            break;
+          }
+        }
+      }
+      console.log(`Is account proxy for sudo: ${isProxySudo}`);
+    }
+
+    // 10. If neither sudo nor proxy, then fail.
+    if (!isSudo && !isProxySudo) {
+      core.setFailed("Key does not have permission to update the runtime (not sudo or proxy for sudo).");
+      process.exit(1);
+    }
+
+    // 11. Build the authorizeUpgrade extrinsic
+    let upgradeCall = api.tx.system.authorizeUpgrade(codeHash);
+
+//    // 12. If relaychain URL is provided, wrap the call in an XCM envelope.
+//    if (relaychainUrl) {
+//      console.log("Wrapping the call in an XCM envelope for relaychain submission...");
+//      const dest = { V4: { parents: 0, interior: { X1: [{ Parachain: 1000 }] } } }; // TODO update paraid
+//      const instr1 = TODO;
+//      const instr2 = {
+//          Transact: {
+//            originKind: 'SovereignAccount',
+//            requireWeightAtMost: { refTime: weightTransact, proofSize: 200000n },
+//            call: {
+//              encoded: transactBytes,
+//            },
+//          },
+//        };
+//      upgradeCall = api.tx.xcmPallet.send((dest, { V4: [instr1, instr2] }));
 //    }
-//
-//    // 11. Build the authorizeUpgrade extrinsic
-//    let upgradeCall = api.tx.system.authorizeUpgrade(codeHash);
-//
+
 //    // 12. Wrap the call in sudo (or proxy+sudo) if needed.
 //    if (isSudo) {
 //      upgradeCall = api.tx.sudo.sudo(upgradeCall);
@@ -95,11 +132,6 @@ async function main() {
 //      upgradeCall = api.tx.proxy.proxy(sudoKey, null, upgradeCall);
 //    }
 //
-//    // 13. If relaychain URL is provided, wrap the call in an XCM envelope.
-//    if (relaychainUrl) {
-//      console.log("Wrapping the call in an XCM envelope for relaychain submission...");
-//      upgradeCall = wrapInXCM(upgradeCall, relaychainUrl);
-//    }
 //
 //    // 14. Submit RPC call 1: authorizeUpgrade.
 //    // If relaychainUrl exists, use that connection; otherwise use target chain.
@@ -153,14 +185,6 @@ async function main() {
     core.setFailed(`Action failed: ${error.message}`);
     process.exit(1);
   }
-}
-
-// Dummy function to simulate wrapping an extrinsic in XCM
-function wrapInXCM(call, relaychainUrl) {
-  // In practice, constructing an XCM message requires proper encoding and using XCM-related pallets.
-  console.log(`Simulating XCM wrapping for call to be sent via relaychain at ${relaychainUrl}`);
-  // For demonstration purposes, we return the call unchanged.
-  return call;
 }
 
 main();
