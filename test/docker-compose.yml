@@ -1,0 +1,80 @@
+version: '3.7'
+services:
+  chainspec:
+    image: &polkadotimage parity/polkadot:stable2409
+    volumes: &chainspec
+      - "chainspec-data:/chainspec"
+    entrypoint: ''
+    user: "0"
+    command: bash -c '/usr/bin/polkadot build-spec --chain rococo-local --disable-default-bootnode --raw > /chainspec/rococo-local.json'
+
+  node_alice:
+    image: *polkadotimage
+    ports:
+      - "9944:9944"
+    volumes: *chainspec
+    depends_on: &depends_on_chainspec
+      chainspec:
+        condition: service_completed_successfully
+    healthcheck:
+      test: bash -c "exec 6<> /dev/tcp/localhost/9944"
+    command: |
+      --chain=/chainspec/rococo-local.json
+      --rpc-port 9944
+      --rpc-cors all
+      --unsafe-rpc-external
+      --unsafe-force-node-key-generation
+      --validator
+      --insecure-validator-i-know-what-i-do
+      --alice
+      --tmp
+
+  node_bob:
+    image: *polkadotimage
+    volumes: *chainspec
+    depends_on: *depends_on_chainspec
+    command: |
+      --chain=/chainspec/rococo-local.json
+      --unsafe-force-node-key-generation
+      --validator
+      --insecure-validator-i-know-what-i-do
+      --bob
+      --tmp
+
+  collator_alice:
+    image: &parachainimage parity/polkadot-parachain:stable2409
+    volumes: *chainspec
+    ports:
+      - "9955:9944"
+    depends_on:
+      node_alice:
+        condition: service_healthy
+    command: |
+      --chain asset-hub-rococo-local
+      --unsafe-rpc-external
+      --rpc-cors=all
+      --rpc-methods=unsafe
+      --unsafe-force-node-key-generation
+      --collator
+      --alice
+      --tmp
+      --
+      --chain /chainspec/rococo-local.json
+      --tmp
+
+  collator_bob:
+    image: *parachainimage
+    volumes: *chainspec
+    depends_on: *depends_on_chainspec
+    command: |
+      --chain asset-hub-rococo-local
+      --unsafe-force-node-key-generation
+      --collator
+      --bob
+      --tmp
+      --
+      --chain /chainspec/rococo-local.json
+      --tmp
+
+volumes:
+  chainspec-data:
