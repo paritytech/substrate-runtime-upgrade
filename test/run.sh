@@ -1,6 +1,8 @@
 #!/bin/bash
 # run this script from docker:
 # docker run -it --rm -v $(pwd):/dir -w /dir --network=test_default node:20 bash
+# npm install
+# test/run.sh
 
 export INPUT_TARGETCHAINURL="ws://test_collator_alice_1:9944"
 export INPUT_WASMPATH="test/data/new-wasm"
