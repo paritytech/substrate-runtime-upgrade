@@ -6,7 +6,9 @@
 
 export INPUT_TARGETCHAINURL="ws://test_collator_alice_1:9944"
 export INPUT_WASMPATH="test/data/new-wasm"
-#export INPUT_WASMPATH="https://github.com/paritytech/polkadot-sdk/releases/download/polkadot-stable2503-rc1/bridge_hub_westend_runtime.compact.compressed.wasm"
+# Will fail `1010: Invalid Transaction: Transaction call is not expected`
+# system.InvalidSpecName rococo vs westend
+#export INPUT_WASMPATH="https://github.com/paritytech/polkadot-sdk/releases/download/polkadot-stable2412/asset_hub_westend_runtime.compact.compressed.wasm"
 export INPUT_ACCOUNT="//Alice"
 export INPUT_RELAYCHAINURL="ws://test_node_alice_1:9944"  # optional, if needed
 

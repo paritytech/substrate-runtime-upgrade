@@ -46,9 +46,9 @@ services:
     volumes: *chainspec
     ports:
       - "9955:9944"
-    depends_on:
-      node_alice:
-        condition: service_healthy
+    depends_on: *depends_on_chainspec
+    healthcheck:
+      test: bash -c "exec 6<> /dev/tcp/localhost/9944"
     command: |
       --chain asset-hub-rococo-local
       --unsafe-rpc-external
@@ -65,7 +65,11 @@ services:
   collator_bob:
     image: *parachainimage
     volumes: *chainspec
-    depends_on: *depends_on_chainspec
+    depends_on:
+      node_alice:
+        condition: service_healthy
+      collator_alice:
+        condition: service_healthy
     command: |
       --chain asset-hub-rococo-local
       --unsafe-force-node-key-generation

@@ -1,0 +1,48 @@
+name: Tests
+
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+#to use reusable workflow
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Prepare test environment
+        run: |
+          cd test 
+          docker compose up -d 
+          docker ps
+          curl -H "Content-Type: application/json" --data '@data/onboard_call.json' localhost:9944
+          echo -e "\nCheck current version:"
+          curl -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"chain_getRuntimeVersion","params":[],"id":1}' localhost:9955
+
+      - name: Run upgrade
+        uses: paritytech/substrate-runtime-upgrade@bs/init
+        with:
+          targetChainUrl: "ws://127.0.0.1:9955"
+          wasmPath: "./test/data/new-wasm"
+          account: "//Alice"
+          relaychainUrl: "ws://127.0.0.1:9944"
+
+      - name: Check new runtime version
+        run: |
+          echo "wait for upgrade apply.." 
+          #sleep 60
+          curl -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"chain_getRuntimeVersion","params":[],"id":1}'  localhost:9955
