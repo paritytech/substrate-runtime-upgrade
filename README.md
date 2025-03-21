@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Perform runtime upgrade
-        uses: ./
+        uses: paritytech/substrate-runtime-upgrade@main
         with:
           targetChainUrl: "wss://your-chain-url"
           wasmPath: "https://your-wasm-file-url"
