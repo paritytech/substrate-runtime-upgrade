@@ -45,6 +45,11 @@ jobs:
 
       - name: Check new runtime version
         run: |
-          echo "wait for upgrade apply.." 
-          #sleep 60
-          curl -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"chain_getRuntimeVersion","params":[],"id":1}'  localhost:9955
+          end=$((SECONDS+60))  # Set timeout for 60 seconds
+          while [[ $(curl -s -H "Content-Type: application/json" \
+              --data '{"jsonrpc":"2.0","method":"chain_getRuntimeVersion","params":[],"id":1}' \
+              localhost:9955 | jq -r '.result.specVersion') != "1017001" ]]; do 
+              [[ $SECONDS -ge $end ]] && echo "Timeout reached!" && exit 1
+              echo "Waiting for specVersion 1017001..."; sleep 5
+          done
+          echo "SpecVersion 1017001 reached!"
