@@ -32,6 +32,7 @@ jobs:
           curl -H "Content-Type: application/json" --data '@data/onboard_call.json' localhost:9944
           echo -e "\nCheck current version:"
           curl -H "Content-Type: application/json" --data '{"jsonrpc":"2.0","method":"chain_getRuntimeVersion","params":[],"id":1}' localhost:9955
+          sleep 6
 
       - name: Run upgrade
         uses: paritytech/substrate-runtime-upgrade@bs/init
