@@ -1,0 +1,20 @@
+{
+  "name": "substrate-runtime-upgrade",
+  "version": "0.0.1",
+  "description": "A GitHub Action to perform a runtime upgrade on a Substrate-based chain.",
+  "main": "dist/index.js",
+  "scripts": {
+    "test": "echo \"No test specified\" && exit 0",
+    "build": "ncc build src/index.js -m"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "@polkadot/api": "^15.8.1",
+    "@polkadot/keyring": "^13.4.3",
+    "@polkadot/util-crypto": "^13.4.3",
+    "axios": "^1.8.3"
+  },
+  "devDependencies": {
+    "@vercel/ncc": "~0.38.3"
+  }
+}
