@@ -36,7 +36,7 @@ jobs:
           sleep 60
 
       - name: Run upgrade
-        uses: paritytech/substrate-runtime-upgrade@${{ github.sha }}
+        uses: ./
         with:
           targetChainUrl: "ws://127.0.0.1:9955"
           wasmPath: "./test/data/new-wasm"
