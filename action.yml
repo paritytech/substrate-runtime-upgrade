@@ -13,6 +13,10 @@ inputs:
   relaychainUrl:
     description: 'Relaychain WSS URL (if account is relaychain sudo)'
     required: false
+  dryRun:
+    description: 'Validate inputs but do not submit any transactions'
+    default: 'false'
+    required: false
 runs:
   using: "node20"
   main: "dist/index.js"
