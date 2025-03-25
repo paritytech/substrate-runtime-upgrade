@@ -20,21 +20,39 @@ const downloadFile = async (url, outputPath) => {
     console.log(`Downloaded to: ${outputPath}`);
 };
 
+// Function to parce subwasm output
+function getSpecVersion(chainInfo) {
+    try {
+        const match = chainInfo.match(/🔥 Core version:\s+([a-zA-Z0-9-]+)-(\d+)/);
+        return {
+            version: match ? parseInt(match[2]) : null,
+            chain: match ? match[1] : null
+        };
+    } catch (error) {
+        console.error("Error fetching runtime metadata:", error);
+        return { version: null, chain: null };
+    }
+}
+
 async function main() {
   try {
     // 1. Read inputs
     const targetChainUrl = core.getInput('targetChainUrl');
     const accountSecret = core.getInput('account');
     const relaychainUrl = core.getInput('relaychainUrl');
+    const dryRun = core.getBooleanInput('dryRun');
     const wsProviderTargetChain = new WsProvider(targetChainUrl);
     const apiTargetChain = await ApiPromise.create({ provider: wsProviderTargetChain });
 
     let wasmPath = core.getInput('wasmPath');
+    let currentRuntimeSpec = null;
+    let newRuntimeSpec = null;
 
     // 2. Print current runtime info (simulate using subwasm)
     try {
       const chainInfo = execSync(`subwasm info ${targetChainUrl}`, { encoding: 'utf-8' });
       console.log("Current runtime info:\n", chainInfo);
+      currentRuntimeSpec = getSpecVersion(chainInfo);
     } catch (err) {
         console.warn("Warning: Could not retrieve chain info via subwasm. Ensure the tool is installed.", err.message);
         console.log("Current runtime info:", (await apiTargetChain.query.system.lastRuntimeUpgrade()).toString());
@@ -53,6 +71,7 @@ async function main() {
         try {
             const wasmInfo = execSync(`subwasm info ${wasmPath}`, { encoding: 'utf-8' });
             console.log("New runtime info:\n", wasmInfo);
+            newRuntimeSpec = getSpecVersion(wasmInfo);
         } catch (err) {
           console.warn("Warning: Could not retrieve WASM file info via subwasm. Ensure the tool is installed.", err.message);
         }
@@ -60,6 +79,26 @@ async function main() {
         console.error("Error:", err.message);
         process.exit(1);
     }
+
+    // Compare version only if subwasm output is available
+    if (currentRuntimeSpec && newRuntimeSpec) {
+        console.log("currentRuntimeSpec", currentRuntimeSpec)
+        console.log("newRuntimeSpec", newRuntimeSpec)
+        if (currentRuntimeSpec.chain === newRuntimeSpec.chain) {
+            console.log("Spec Name:", newRuntimeSpec.chain);
+        } else {
+            console.error(`Error: Invalid spec name for new runtime, expected: '${currentRuntimeSpec.chain}', got: '${newRuntimeSpec.chain}'`);
+            process.exit(1);
+        }
+        if (currentRuntimeSpec.version < newRuntimeSpec.version) {
+            console.log(`Spec Version: ${currentRuntimeSpec.version} -> ${newRuntimeSpec.version}`);
+        } else {
+            console.error(`Error: Invalid version, new version should be greater: old: ${currentRuntimeSpec.version}, new: ${newRuntimeSpec.version}`);
+            process.exit(1);
+        }
+    }
+
+
 
     // 4. Load WASM code (from URL or local file)
     let wasmCode;
@@ -185,58 +224,65 @@ async function main() {
           console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
         }
 
-        // 16. Submit RPC call 1: authorizeUpgrade.
-        console.log("Submitting authorizeUpgrade extrinsic...");
+        if (dryRun) {
+            console.log("DRY RUN: Skip submitting authorizeUpgrade extrinsic...");
+        } else {
+            // 16. Submit RPC call 1: authorizeUpgrade.
+            console.log("Submitting authorizeUpgrade extrinsic...");
+            await new Promise(async (resolve, reject) => {
+              const unsub = await upgradeCall.signAndSend(account, (result) => {
+                console.log(`Current status: ${result.status}`);
+                if (result.status.isInBlock || result.status.isFinalized) {
+                  console.log(`Extrinsic included in block: ${result.status}`);
+                  unsub();
+                  resolve();
+                }
+              }).catch(reject);
+            });
+        }
+    }
+    if (dryRun) {
+        console.log("DRY RUN: Skip submitting applyAuthorizedUpgrade extrinsic (unsigned)...");
+    } else {
+        // 17. Verify that authorizeUpgrade was successful by checking system.authorizedUpgrade.
+        console.log("Waiting 60s for chain to receive AuthorizedUpgrade event");
+        for (let i = 0; i < 30; i++) {
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Sleep for 2 seconds
+            const authorizedUpgrade = await apiTargetChain.query.system.authorizedUpgrade();
+            if (authorizedUpgrade.isSome) {
+                if (authorizedUpgrade.unwrap().codeHash.toString() === codeHash){
+                    console.log("authorizeUpgrade RPC call successful.");
+                    break;
+                } else {
+                  console.log(`authorizedUpgrade.unwrap().codeHash: ${authorizedUpgrade.unwrap().codeHash.toString()}`);
+                  console.log(`codeHash: ${codeHash}`);
+                  core.setFailed("First RPC call failed: system.authorizedUpgrade did not match expected code hash.");
+                  process.exit(1);
+                }
+            }
+            if (i === 29) {
+              core.setFailed("Timeout, chain did not receive system.authorizedUpgrade message");
+              process.exit(1);
+            }
+        }
+
+        // 18. Submit RPC call 2: applyAuthorizedUpgrade (unsigned) via target chain.
+        console.log("Submitting applyAuthorizedUpgrade extrinsic (unsigned)...");
+        const applyUpgradeCall = apiTargetChain.tx.system.applyAuthorizedUpgrade(`0x${wasmCode.toString("hex")}`);
+        // Note: .send() here is used to broadcast an unsigned extrinsic.
         await new Promise(async (resolve, reject) => {
-          const unsub = await upgradeCall.signAndSend(account, (result) => {
-            console.log(`Current status: ${result.status}`);
-            if (result.status.isInBlock || result.status.isFinalized) {
-              console.log(`Extrinsic included in block: ${result.status}`);
+          const unsub = await applyUpgradeCall.send(({ status }) => {
+            console.log(`applyAuthorizedUpgrade status: ${status}`);
+            if (status.isFinalized) {
+              console.log(`applyAuthorizedUpgrade finalized in block: ${status.asFinalized.toString()}`);
               unsub();
               resolve();
             }
           }).catch(reject);
         });
+
+        console.log("Runtime upgrade successfully submitted.");
     }
-
-    // 17. Verify that authorizeUpgrade was successful by checking system.authorizedUpgrade.
-    console.log("Waiting 60s for chain to receive AuthorizedUpgrade event");
-    for (let i = 0; i < 30; i++) {
-        await new Promise(resolve => setTimeout(resolve, 2000)); // Sleep for 2 seconds
-        const authorizedUpgrade = await apiTargetChain.query.system.authorizedUpgrade();
-        if (authorizedUpgrade.isSome) {
-            if (authorizedUpgrade.unwrap().codeHash.toString() === codeHash){
-                console.log("authorizeUpgrade RPC call successful.");
-                break;
-            } else {
-              console.log(`authorizedUpgrade.unwrap().codeHash: ${authorizedUpgrade.unwrap().codeHash.toString()}`);
-              console.log(`codeHash: ${codeHash}`);
-              core.setFailed("First RPC call failed: system.authorizedUpgrade did not match expected code hash.");
-              process.exit(1);
-            }
-        }
-        if (i === 29) {
-          core.setFailed("Timeout, chain did not receive system.authorizedUpgrade message");
-          process.exit(1);
-        }
-    }
-
-    // 18. Submit RPC call 2: applyAuthorizedUpgrade (unsigned) via target chain.
-    console.log("Submitting applyAuthorizedUpgrade extrinsic (unsigned)...");
-    const applyUpgradeCall = apiTargetChain.tx.system.applyAuthorizedUpgrade(`0x${wasmCode.toString("hex")}`);
-    // Note: .send() here is used to broadcast an unsigned extrinsic.
-    await new Promise(async (resolve, reject) => {
-      const unsub = await applyUpgradeCall.send(({ status }) => {
-        console.log(`applyAuthorizedUpgrade status: ${status}`);
-        if (status.isFinalized) {
-          console.log(`applyAuthorizedUpgrade finalized in block: ${status.asFinalized.toString()}`);
-          unsub();
-          resolve();
-        }
-      }).catch(reject);
-    });
-
-    console.log("Runtime upgrade successfully submitted.");
     process.exit(0);
   } catch (error) {
     core.setFailed(`Action failed: ${error.message}`);
