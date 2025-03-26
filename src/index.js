@@ -229,13 +229,13 @@ async function main() {
           upgradeCall = apiManager.tx.proxy.proxy(sudoKey, null, upgradeCall);
           console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
         }
-        if (dryRun) {
-            console.log("DRY RUN: Skip submitting authorizeUpgrade extrinsic...");
-        } else if (!account){
+        if (!account){
             console.log(`::notice:: No account key is provided. Please run the following transaction and restart the job to finish the upgrade.
                 Call: system.authorizeUpgrade(${codeHash})
                 Encoded call: ${upgradeCall.method.toHex()}`);
             process.exit(1);
+        } else if (dryRun) {
+            console.log("DRY RUN: Skip submitting authorizeUpgrade extrinsic...");
         } else {
             // 16. Submit RPC call 1: authorizeUpgrade.
             console.log("Submitting authorizeUpgrade extrinsic...");
