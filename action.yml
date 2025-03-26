@@ -9,7 +9,7 @@ inputs:
     required: true
   account:
     description: 'Account secret/mnemonic to sign the upgrade'
-    required: true
+    required: false
   relaychainUrl:
     description: 'Relaychain WSS URL (if account is relaychain sudo)'
     required: false
