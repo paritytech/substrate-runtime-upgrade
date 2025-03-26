@@ -29,7 +29,7 @@ function getSpecVersion(chainInfo) {
             chain: match ? match[1] : null
         };
     } catch (error) {
-        console.error("Error fetching runtime metadata:", error);
+        console.log("ERROR fetching runtime metadata:", error);
         return { version: null, chain: null };
     }
 }
@@ -76,7 +76,7 @@ async function main() {
           console.warn("Warning: Could not retrieve WASM file info via subwasm. Ensure the tool is installed.", err.message);
         }
     } catch (err) {
-        console.error("Error:", err.message);
+        console.log("::error::", err.message);
         process.exit(1);
     }
 
@@ -87,13 +87,13 @@ async function main() {
         if (currentRuntimeSpec.chain === newRuntimeSpec.chain) {
             console.log("Spec Name:", newRuntimeSpec.chain);
         } else {
-            console.error(`Error: Invalid spec name for new runtime, expected: '${currentRuntimeSpec.chain}', got: '${newRuntimeSpec.chain}'`);
+            console.log(`::error:: Invalid spec name for new runtime, expected: '${currentRuntimeSpec.chain}', got: '${newRuntimeSpec.chain}'`);
             process.exit(1);
         }
         if (currentRuntimeSpec.version < newRuntimeSpec.version) {
             console.log(`Spec Version: ${currentRuntimeSpec.version} -> ${newRuntimeSpec.version}`);
         } else {
-            console.error(`Error: Invalid version, new version should be greater: old: ${currentRuntimeSpec.version}, new: ${newRuntimeSpec.version}`);
+            console.log(`::error:: Invalid version, new version should be greater: old: ${currentRuntimeSpec.version}, new: ${newRuntimeSpec.version}`);
             process.exit(1);
         }
     }
@@ -118,47 +118,53 @@ async function main() {
         apiManager = apiTargetChain;
     }
 
-    // 7. Load account from secret/mnemonic
-    const keyring = new Keyring({ type: 'sr25519' });
-    const account = keyring.addFromUri(accountSecret);
-    console.log(`Using account: ${account.address}`);
-
-    // 8. Check if the account is the sudo key
-    const sudoKey = (await apiManager.query.sudo.key()).toString();
-    const isSudo = account.address === sudoKey;
-    console.log(`Is account sudo: ${isSudo}`);
-
-    // 9. If not sudo, check if account is proxy for sudo
+    let account;
     let isProxySudo = false;
-    if (!isSudo) {
-      const proxies = await apiManager.query.proxy.proxies(sudoKey);
-      // proxies returns a tuple: [proxyList, deposit]
-      if (proxies[0].length > 0) {
-        for (const proxy of proxies[0]) {
-          if (proxy.delegate.toString() === account.address ) {
-            isProxySudo = true;
-            break;
+    if (accountSecret) {
+        // 7. Load account from secret/mnemonic
+        const keyring = new Keyring({ type: 'sr25519' });
+        account = keyring.addFromUri(accountSecret);
+        console.log(`Using account: ${account.address}`);
+
+        // 8. Check if the account is the sudo key
+        const sudoKey = (await apiManager.query.sudo.key()).toString();
+        const isSudo = account.address === sudoKey;
+        console.log(`Is account sudo: ${isSudo}`);
+
+        // 9. If not sudo, check if account is proxy for sudo
+        if (!isSudo) {
+          const proxies = await apiManager.query.proxy.proxies(sudoKey);
+          // proxies returns a tuple: [proxyList, deposit]
+          if (proxies[0].length > 0) {
+            for (const proxy of proxies[0]) {
+              if (proxy.delegate.toString() === account.address ) {
+                isProxySudo = true;
+                break;
+              }
+            }
           }
+          console.log(`Is account proxy for sudo: ${isProxySudo}`);
         }
-      }
-      console.log(`Is account proxy for sudo: ${isProxySudo}`);
-    }
 
-    // 10. If neither sudo nor proxy, fail.
-    if (!isSudo && !isProxySudo) {
-      core.setFailed("Key does not have permission to update the runtime (not sudo or proxy for sudo).");
-      process.exit(1);
-    }
+        // 10. If neither sudo nor proxy, fail.
+        if (!isSudo && !isProxySudo) {
+          core.setFailed("Key does not have permission to update the runtime (not sudo or proxy for sudo).");
+          process.exit(1);
+        }
 
-    // 11. Check if account has sufficient balance for the fee
-    const { data: balance } = await apiManager.query.system.account(account.address);
-    const existentialDeposit = parseInt(apiManager.consts.balances.existentialDeposit);
-    const estimatedTxFee = parseInt(apiManager.consts.transactionPayment?.defaultTransactionByteFee) || 1000000000;
-    if (balance.free < (estimatedTxFee + existentialDeposit)) {
-        console.log(`balance.free: ${balance.free}`);
-        console.log(`estimatedTxFee + existentialDeposit: ${(estimatedTxFee + existentialDeposit)}`);
-        console.error("Error: Account has insufficient balance for transaction");
-        process.exit(1);
+        // 11. Check if account has sufficient balance for the fee
+        const { data: balance } = await apiManager.query.system.account(account.address);
+        const existentialDeposit = parseInt(apiManager.consts.balances.existentialDeposit);
+        const estimatedTxFee = parseInt(apiManager.consts.transactionPayment?.defaultTransactionByteFee) || 1000000000;
+        if (balance.free < (estimatedTxFee + existentialDeposit)) {
+            console.log(`balance.free: ${balance.free}`);
+            console.log(`estimatedTxFee + existentialDeposit: ${(estimatedTxFee + existentialDeposit)}`);
+            console.log("::error:: Account has insufficient balance for transaction");
+            process.exit(1);
+        }
+    } else {
+        account = false;
+        console.log("::warning:: Account is not set");
     }
 
     // 12. Check if there is already an authorized upgrade in progress
@@ -171,7 +177,7 @@ async function main() {
       } else {
         console.log(`Already submitted runtime hash: ${authorizedUpgrade.unwrap().codeHash.toString()}`);
         console.log(`Our hash: ${codeHash}`);
-        console.error("Error: Another runtime is already waiting to be applied");
+        console.log("::error:: Another runtime is already waiting to be applied");
         process.exit(1);
       }
     }
@@ -223,9 +229,13 @@ async function main() {
           upgradeCall = apiManager.tx.proxy.proxy(sudoKey, null, upgradeCall);
           console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
         }
-
         if (dryRun) {
             console.log("DRY RUN: Skip submitting authorizeUpgrade extrinsic...");
+        } else if (!account){
+            console.log(`::notice:: No account key is provided. Please run the following transaction and restart the job to finish the upgrade.
+                Call: system.authorizeUpgrade(${codeHash})
+                Encoded call: ${upgradeCall.method.toHex()}`);
+            process.exit(1);
         } else {
             // 16. Submit RPC call 1: authorizeUpgrade.
             console.log("Submitting authorizeUpgrade extrinsic...");
