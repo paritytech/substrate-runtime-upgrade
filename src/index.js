@@ -120,6 +120,7 @@ async function main() {
 
     let account;
     let isProxySudo = false;
+    let sudoKey;
     if (accountSecret) {
         // 7. Load account from secret/mnemonic
         const keyring = new Keyring({ type: 'sr25519' });
@@ -127,7 +128,7 @@ async function main() {
         console.log(`Using account: ${account.address}`);
 
         // 8. Check if the account is the sudo key
-        const sudoKey = (await apiManager.query.sudo.key()).toString();
+        sudoKey = (await apiManager.query.sudo.key()).toString();
         const isSudo = account.address === sudoKey;
         console.log(`Is account sudo: ${isSudo}`);
 
