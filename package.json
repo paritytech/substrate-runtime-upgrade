@@ -1,6 +1,6 @@
 {
   "name": "substrate-runtime-upgrade",
-  "version": "0.0.3",
+  "version": "0.0.4",
   "description": "A GitHub Action to perform a runtime upgrade on a Substrate-based chain.",
   "main": "dist/index.js",
   "scripts": {
