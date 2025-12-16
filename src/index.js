@@ -256,8 +256,8 @@ async function main() {
         console.log("DRY RUN: Skip submitting applyAuthorizedUpgrade extrinsic (unsigned)...");
     } else {
         // 17. Verify that authorizeUpgrade was successful by checking system.authorizedUpgrade.
-        console.log("Waiting 60s for chain to receive AuthorizedUpgrade event");
-        for (let i = 0; i < 30; i++) {
+        console.log("Waiting 5m for chain to receive AuthorizedUpgrade event");
+        for (let i = 0; i < 150; i++) {
             await new Promise(resolve => setTimeout(resolve, 2000)); // Sleep for 2 seconds
             const authorizedUpgrade = await apiTargetChain.query.system.authorizedUpgrade();
             if (authorizedUpgrade.isSome) {
