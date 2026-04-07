@@ -48,15 +48,13 @@ async function main() {
     let currentRuntimeSpec = null;
     let newRuntimeSpec = null;
 
-    // 2. Print current runtime info (simulate using subwasm)
-    try {
-      const chainInfo = execSync(`subwasm info ${targetChainUrl}`, { encoding: 'utf-8' });
-      console.log("Current runtime info:\n", chainInfo);
-      currentRuntimeSpec = getSpecVersion(chainInfo);
-    } catch (err) {
-        console.warn("Warning: Could not retrieve chain info via subwasm. Ensure the tool is installed.", err.message);
-        console.log("Current runtime info:", (await apiTargetChain.query.system.lastRuntimeUpgrade()).toString());
-    }
+    // 2. Get current runtime info via API
+    const runtimeVersion = apiTargetChain.runtimeVersion;
+    currentRuntimeSpec = {
+        version: runtimeVersion.specVersion.toNumber(),
+        chain: runtimeVersion.specName.toString()
+    };
+    console.log(`Current runtime: specName=${currentRuntimeSpec.chain}, specVersion=${currentRuntimeSpec.version}`);
 
     // 3. Print new runtime info
     try {
