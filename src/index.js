@@ -281,6 +281,24 @@ async function submitExtrinsic(chain, txHex) {
   return rpcCall(chain.client, 'author_submitExtrinsic', [txHex]);
 }
 
+async function validateTransaction(chain, txBytes) {
+  const finalized = await rpcCall(chain.client, 'chain_getFinalizedHead', []);
+  const txSource = new Uint8Array([2]);
+  const txEnc = scale.Bytes(txBytes.length).enc(txBytes);
+  const blockHashBytes = hexToU8a(finalized);
+  const callData = u8aToHex(u8aConcat(txSource, txEnc, blockHashBytes));
+  return rpcCall(chain.client, 'state_call', [
+    'TaggedTransactionQueue_validate_transaction', callData, finalized,
+  ]);
+}
+
+function interpretValidateResult(resultHex) {
+  if (!resultHex || resultHex === '0x') return { ok: false, reason: 'empty response' };
+  if (resultHex.startsWith('0x00')) return { ok: true };
+  if (resultHex === '0x010003') return { ok: true, reason: 'stale nonce (encoding+signature accepted)' };
+  return { ok: false, reason: `runtime rejected: ${resultHex}` };
+}
+
 async function waitForAuthorizedUpgrade(chain, expectedCodeHashHex, timeoutMs) {
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
@@ -425,25 +443,34 @@ async function main() {
         process.exit(1);
       }
 
+      const nonce = await getAccountNonce(managerChain, signerAccount.publicKey);
+      const signedExtensions = buildSignedExtensions(managerChain, managerRuntime, nonce);
+      const polkadotSigner = getPolkadotSigner(
+        signerAccount.publicKey,
+        'Sr25519',
+        (bytes) => signerAccount.sign(bytes, { withType: false }),
+      );
+      const txBytes = await polkadotSigner.signTx(
+        outerCall,
+        signedExtensions,
+        managerChain.metadataBytes,
+        managerRuntime.finalizedNumber,
+        (data) => blake2AsU8a(data, 256),
+      );
+      const txHex = u8aToHex(txBytes);
+
       if (dryRun) {
-        console.log('DRY RUN: Skip submitting authorizeUpgrade extrinsic...');
+        console.log('DRY RUN: validating signed authorizeUpgrade via TaggedTransactionQueue_validate_transaction...');
+        const resultHex = await validateTransaction(managerChain, txBytes);
+        const verdict = interpretValidateResult(resultHex);
+        console.log(`  validate_transaction result: ${resultHex}`);
+        if (!verdict.ok) {
+          core.setFailed(`Dry-run validation failed: ${verdict.reason}`);
+          process.exit(1);
+        }
+        console.log(`  Runtime accepted the extrinsic${verdict.reason ? ` (${verdict.reason})` : ''}`);
       } else {
         console.log('Submitting authorizeUpgrade extrinsic...');
-        const nonce = await getAccountNonce(managerChain, signerAccount.publicKey);
-        const signedExtensions = buildSignedExtensions(managerChain, managerRuntime, nonce);
-        const polkadotSigner = getPolkadotSigner(
-          signerAccount.publicKey,
-          'Sr25519',
-          (bytes) => signerAccount.sign(bytes, { withType: false }),
-        );
-        const txBytes = await polkadotSigner.signTx(
-          outerCall,
-          signedExtensions,
-          managerChain.metadataBytes,
-          managerRuntime.finalizedNumber,
-          (data) => blake2AsU8a(data, 256),
-        );
-        const txHex = u8aToHex(txBytes);
         const txHash = await submitExtrinsic(managerChain, txHex);
         console.log(`authorizeUpgrade submitted, txHash: ${txHash}`);
       }
