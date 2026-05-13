@@ -1,7 +1,8 @@
 const core = require('@actions/core');
 const { ApiPromise, WsProvider } = require('@polkadot/api');
 const { Keyring } = require('@polkadot/keyring');
-const { blake2AsHex } = require('@polkadot/util-crypto');
+const { blake2AsHex, encodeAddress } = require('@polkadot/util-crypto');
+const { u8aEq } = require('@polkadot/util');
 const fs = require('fs');
 const { execSync } = require('child_process');
 const axios = require('axios');
@@ -125,9 +126,17 @@ async function main() {
         account = keyring.addFromUri(accountSecret);
         console.log(`Using account: ${account.address}`);
 
-        // 8. Check if the account is the sudo key
-        sudoKey = (await apiManager.query.sudo.key()).toString();
-        const isSudo = account.address === sudoKey;
+        // 8. Check if the account is the sudo key.
+        // Compare pubkeys (not SS58 strings) so that chains with a non-default SS58 prefix (e.g. 0 on Polkadot Asset Hub) still match the keyring's substrate-generic address (prefix 42).
+        const sudoKeyOpt = await apiManager.query.sudo.key();
+        if (sudoKeyOpt.isNone) {
+          core.setFailed("Sudo key is not set on the chain (sudo pallet may have been removed).");
+          process.exit(1);
+        }
+        const sudoKeyRaw = sudoKeyOpt.unwrap();
+        sudoKey = encodeAddress(sudoKeyRaw.toU8a(), 42);
+        console.log(`Sudo key on chain: ${sudoKey}`);
+        const isSudo = u8aEq(account.publicKey, sudoKeyRaw.toU8a());
         console.log(`Is account sudo: ${isSudo}`);
 
         // 9. If not sudo, check if account is proxy for sudo
@@ -136,7 +145,7 @@ async function main() {
           // proxies returns a tuple: [proxyList, deposit]
           if (proxies[0].length > 0) {
             for (const proxy of proxies[0]) {
-              if (proxy.delegate.toString() === account.address ) {
+              if (u8aEq(proxy.delegate.toU8a(), account.publicKey)) {
                 isProxySudo = true;
                 break;
               }
@@ -269,7 +278,7 @@ async function main() {
                   process.exit(1);
                 }
             }
-            if (i === 29) {
+            if (i === 149) {
               core.setFailed("Timeout, chain did not receive system.authorizedUpgrade message");
               process.exit(1);
             }
