@@ -11,7 +11,6 @@ import { blake2AsU8a, encodeAddress } from '@polkadot/util-crypto';
 import { u8aEq, u8aToHex, hexToU8a, u8aConcat } from '@polkadot/util';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
-import axios from 'axios';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -19,8 +18,9 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const downloadFile = async (url, outputPath) => {
   console.log(`Downloading file from ${url}...`);
-  const response = await axios({ url, method: 'GET', responseType: 'arraybuffer' });
-  fs.writeFileSync(outputPath, response.data);
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Download failed: ${res.status} ${res.statusText}`);
+  fs.writeFileSync(outputPath, new Uint8Array(await res.arrayBuffer()));
   console.log(`Downloaded to: ${outputPath}`);
 };
 
