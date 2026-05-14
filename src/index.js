@@ -1,4 +1,5 @@
 import core from '@actions/core';
+import { WebSocket } from 'ws';
 import { getWsProvider } from '@polkadot-api/ws-provider';
 import { createClient } from '@polkadot-api/substrate-client';
 import { getDynamicBuilder, getLookupFn } from '@polkadot-api/metadata-builders';
@@ -39,7 +40,7 @@ function rpcCall(client, method, params = []) {
 }
 
 async function connectChain(url) {
-  const provider = getWsProvider(url);
+  const provider = getWsProvider(url, { websocketClass: WebSocket });
   const client = createClient(provider);
   const metadataHex = await rpcCall(client, 'state_getMetadata', []);
   const metadataBytes = hexToU8a(metadataHex);
