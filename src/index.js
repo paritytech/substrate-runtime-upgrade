@@ -6,7 +6,7 @@ import { decAnyMetadata, unifyMetadata } from '@polkadot-api/substrate-bindings'
 import * as scale from '@polkadot-api/substrate-bindings';
 import { getPolkadotSigner } from '@polkadot-api/signer';
 import { Keyring } from '@polkadot/keyring';
-import { blake2AsU8a, encodeAddress } from '@polkadot/util-crypto';
+import { blake2AsU8a, cryptoWaitReady, encodeAddress } from '@polkadot/util-crypto';
 import { u8aEq, u8aToHex, hexToU8a, u8aConcat } from '@polkadot/util';
 import fs from 'node:fs';
 import { execSync } from 'node:child_process';
@@ -314,6 +314,8 @@ async function waitForAuthorizedUpgrade(chain, expectedCodeHashHex, timeoutMs) {
 
 async function main() {
   try {
+    await cryptoWaitReady();
+
     const targetChainUrl = core.getInput('targetChainUrl');
     const accountSecret = core.getInput('account');
     const relaychainUrl = core.getInput('relaychainUrl');
