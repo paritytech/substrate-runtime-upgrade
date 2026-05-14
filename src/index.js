@@ -1,6 +1,6 @@
 import core from '@actions/core';
 import { WebSocket } from 'ws';
-import { createClient, Binary, getSs58AddressInfo } from 'polkadot-api';
+import { createClient, getSs58AddressInfo } from 'polkadot-api';
 import { getWsProvider } from 'polkadot-api/ws';
 import { getPolkadotSigner } from '@polkadot-api/signer';
 import { Bytes } from '@polkadot-api/substrate-bindings';
@@ -102,7 +102,7 @@ async function buildXcmRelayCall(relayApi, targetApi, codeHashHex) {
         value: {
           origin_kind: { type: 'Superuser' },
           require_weight_at_most: { ref_time: 1_000_000_000n, proof_size: 100_000n },
-          call: Binary.fromBytes(innerEncoded),
+          call: innerEncoded,
         },
       },
     ],
@@ -283,7 +283,7 @@ async function main() {
       }
 
       console.log('Submitting applyAuthorizedUpgrade extrinsic (unsigned)...');
-      const applyTx = target.api.tx.System.apply_authorized_upgrade({ code: Binary.fromBytes(new Uint8Array(wasmCode)) });
+      const applyTx = target.api.tx.System.apply_authorized_upgrade({ code: new Uint8Array(wasmCode) });
       const wireBytes = await applyTx.getBareTx();
       const wireHex = u8aToHex(wireBytes);
       const txHash = await rawRpc(target.client, 'author_submitExtrinsic', [wireHex]);
