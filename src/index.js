@@ -42,6 +42,7 @@ async function main() {
     const accountSecret = core.getInput('account');
     const relaychainUrl = core.getInput('relaychainUrl');
     const dryRun = core.getBooleanInput('dryRun');
+    const commitHash = core.getInput('commitHash');
     const wsProviderTargetChain = new WsProvider(targetChainUrl);
     const apiTargetChain = await ApiPromise.create({ provider: wsProviderTargetChain });
 
@@ -227,7 +228,15 @@ async function main() {
           console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
         }
 
-        // 15. Wrap the call in sudo (or proxy+sudo) if needed.
+        // 15a. If a commit hash is provided, batch the upgrade with a remark for audit visibility.
+        if (commitHash) {
+          console.log(`Batching with system.remarkWithEvent for commit ${commitHash}`);
+          const remarkCall = apiManager.tx.system.remarkWithEvent(commitHash);
+          upgradeCall = apiManager.tx.utility.batchAll([remarkCall, upgradeCall]);
+          console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
+        }
+
+        // 15b. Wrap the call in sudo (or proxy+sudo) if needed.
         console.log("Wrapping the call in sudo...");
         upgradeCall = apiManager.tx.sudo.sudo(upgradeCall);
         console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
