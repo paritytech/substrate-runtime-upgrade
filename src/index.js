@@ -1,5 +1,4 @@
 import core from '@actions/core';
-import { WebSocket } from 'ws';
 import { createClient, getSs58AddressInfo } from 'polkadot-api';
 import { getWsProvider } from 'polkadot-api/ws';
 import { getPolkadotSigner } from '@polkadot-api/signer';
@@ -31,7 +30,7 @@ function getSpecVersion(chainInfo) {
 }
 
 async function connectChain(url) {
-  const provider = getWsProvider(url, { websocketClass: WebSocket });
+  const provider = getWsProvider(url);
   const client = createClient(provider);
   const api = client.getUnsafeApi();
   return { url, client, api };
@@ -252,10 +251,8 @@ async function main() {
         process.exit(1);
       }
 
-      const txBytes = await tx.sign(signer);
-      const txHex = u8aToHex(txBytes);
-
       if (dryRun) {
+        const txBytes = await tx.sign(signer);
         console.log('DRY RUN: validating signed authorizeUpgrade via TaggedTransactionQueue_validate_transaction...');
         const resultHex = await validateTransaction(manager.client, txBytes);
         const verdict = interpretValidateResult(resultHex);
@@ -266,9 +263,13 @@ async function main() {
         }
         console.log(`  Runtime accepted the extrinsic${verdict.reason ? ` (${verdict.reason})` : ''}`);
       } else {
-        console.log('Submitting authorizeUpgrade extrinsic...');
-        const txHash = await rawRpc(manager.client, 'author_submitExtrinsic', [txHex]);
-        console.log(`authorizeUpgrade submitted, txHash: ${txHash}`);
+        console.log('Submitting authorizeUpgrade extrinsic and waiting for finalization...');
+        const result = await tx.signAndSubmit(signer);
+        if (!result.ok) {
+          core.setFailed(`authorizeUpgrade failed in block ${result.block.hash}: ${JSON.stringify(result.dispatchError)}`);
+          process.exit(1);
+        }
+        console.log(`authorizeUpgrade finalized in block ${result.block.hash} (#${result.block.number}), tx index ${result.block.index}`);
       }
     }
 
