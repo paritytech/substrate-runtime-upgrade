@@ -17,9 +17,6 @@ inputs:
     description: 'Validate inputs but do not submit any transactions'
     default: 'false'
     required: false
-  commitHash:
-    description: 'Optional polkadot-sdk (or runtime repo) commit hash to remark on-chain alongside the upgrade. Accepts hex (0x...) or arbitrary text.'
-    required: false
 runs:
   using: "node20"
   main: "dist/index.js"
