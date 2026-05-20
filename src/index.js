@@ -42,6 +42,7 @@ async function main() {
     const accountSecret = core.getInput('account');
     const relaychainUrl = core.getInput('relaychainUrl');
     const dryRun = core.getBooleanInput('dryRun');
+    const commitHash = core.getInput('commitHash');
     const wsProviderTargetChain = new WsProvider(targetChainUrl);
     const apiTargetChain = await ApiPromise.create({ provider: wsProviderTargetChain });
 
@@ -227,10 +228,22 @@ async function main() {
           console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
         }
 
-        // 15. Wrap the call in sudo (or proxy+sudo) if needed.
+        // 15a. Sudo-wrap the upgrade call. The remark must be batched *outside* this
+        // wrap because system.remarkWithEvent does ensure_signed(origin) and would
+        // fail BadOrigin if dispatched as Root by sudo via utility.batchAll.
         console.log("Wrapping the call in sudo...");
         upgradeCall = apiManager.tx.sudo.sudo(upgradeCall);
         console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
+
+        // 15b. If a commit hash is provided, batch the sudo-wrapped upgrade with a
+        // signed-origin remarkWithEvent for on-chain audit visibility.
+        if (commitHash) {
+          console.log(`Batching with system.remarkWithEvent for commit ${commitHash}`);
+          const remarkCall = apiManager.tx.system.remarkWithEvent(commitHash);
+          upgradeCall = apiManager.tx.utility.batchAll([remarkCall, upgradeCall]);
+          console.log(`upgradeCall: ${upgradeCall.method.toHex()}`);
+        }
+
         if (isProxySudo) {
           console.log("Wrapping the call in proxy...");
           // Wrap the call in a proxy call: note that proxyType is set to null (i.e. any)
